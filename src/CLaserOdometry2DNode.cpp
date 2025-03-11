@@ -123,7 +123,8 @@ bool CLaserOdometry2DNode::setLaserPoseFromTf()
   transform.setIdentity();
   try
   {
-    tf_listener.lookupTransform(base_frame_id, last_scan.header.frame_id, ros::Time(0), transform);
+    tf_listener.waitForTransform("/base_link","/lidar_link", ros::Time(), ros::Duration(5.0));
+    tf_listener.lookupTransform("/base_link","/lidar_link", ros::Time(0), transform);
     retrieved = true;
   }
   catch (tf::TransformException &ex)
@@ -196,7 +197,7 @@ void CLaserOdometry2DNode::LaserCallBack(const sensor_msgs::LaserScan::ConstPtr&
     }
     else
     {
-      init(last_scan, initial_robot_pose.pose.pose);
+      init(last_scan, initial_robot_pose.pose.pose,nh);
       first_laser_scan = false;
     }
   }
@@ -244,8 +245,8 @@ void CLaserOdometry2DNode::publish()
   odom.pose.pose.orientation = tf::createQuaternionMsgFromYaw(rf2o::getYaw(robot_pose_.rotation()));
   //set the velocity
   odom.child_frame_id = base_frame_id;
-  odom.twist.twist.linear.x = lin_speed;    //linear speed
-  odom.twist.twist.linear.y = 0.0;
+  odom.twist.twist.linear.x = vx_world;    //linear speed
+  odom.twist.twist.linear.y = vy_world;
   odom.twist.twist.angular.z = ang_speed;   //angular speed
   //publish the message
   odom_pub.publish(odom);

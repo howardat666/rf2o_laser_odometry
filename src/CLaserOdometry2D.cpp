@@ -38,6 +38,25 @@ CLaserOdometry2D::CLaserOdometry2D() :
   //
 }
 
+
+
+void CLaserOdometry2D::imuCallback(const sensor_msgs::Imu::ConstPtr& msg) {
+    std::lock_guard<std::mutex> lock(imu_mutex);
+    
+    tf2::Quaternion quat;
+    tf2::fromMsg(msg->orientation, quat);  // 使用 tf2::fromMsg() 代替 quaternionMsgToTF
+
+    double roll, pitch, yaw;
+    tf2::Matrix3x3 mat(quat);
+    mat.getRPY(roll, pitch, yaw);
+    
+    imu_yaw = yaw;  // 存储IMU提供的yaw角
+}
+
+
+
+
+
 void CLaserOdometry2D::setLaserPose(const Pose3d& laser_pose)
 {
   //Set laser pose on the robot
@@ -52,7 +71,8 @@ bool CLaserOdometry2D::is_initialized()
 }
 
 void CLaserOdometry2D::init(const sensor_msgs::LaserScan& scan,
-                            const geometry_msgs::Pose& initial_robot_pose)
+                            const geometry_msgs::Pose& initial_robot_pose,
+                            ros::NodeHandle& nh)
 {
   //Got an initial scan laser, obtain its parametes
   ROS_INFO_COND(verbose, "[rf2o] Got first Laser Scan .... Configuring node");
@@ -63,6 +83,9 @@ void CLaserOdometry2D::init(const sensor_msgs::LaserScan& scan,
   fovh = std::abs(scan.angle_max - scan.angle_min); // Horizontal Laser's FOV
   ctf_levels = 5;                     // Coarse-to-Fine levels
   iter_irls  = 5;                      //Num iterations to solve iterative reweighted least squares
+
+  imu_yaw = 0.0;  // 初始化yaw角
+  imu_subscriber = nh.subscribe("/robot/imu_data", 10, &CLaserOdometry2D::imuCallback, this);
 
   Pose3d robot_initial_pose = Pose3d::Identity();
 
@@ -953,6 +976,28 @@ void CLaserOdometry2D::PoseUpdate()
   //-------------------------------------------------------------------------------------
   double time_inc_sec = (current_scan_time - last_odom_time).toSec();
   last_odom_time = current_scan_time;
+
+
+
+
+  double delta_x = acu_trans(0,2);
+  double delta_y = acu_trans(1,2);
+
+  vx = delta_x / time_inc_sec;
+  vy = delta_y / time_inc_sec;
+
+  // 计算世界坐标系速度
+  // phi = rf2o::getYaw(laser_pose_.rotation());
+  std::lock_guard<std::mutex> lock(imu_mutex);
+  phi = imu_yaw;  // 直接使用IMU的yaw角
+
+  vx_world = vx * std::cos(phi) - vy * std::sin(phi);
+  vy_world = vx * std::sin(phi) + vy * std::cos(phi);
+
+  ROS_INFO("Odometry Velocity: vx = %f, vy = %f", vx_world, vy_world);
+
+
+
   lin_speed = acu_trans(0,2) / time_inc_sec;
   //double lin_speed = sqrt( mrpt::math::square(robot_oldpose.x()-robot_pose.x()) + mrpt::math::square(robot_oldpose.y()-robot_pose.y()) )/time_inc_sec;
 

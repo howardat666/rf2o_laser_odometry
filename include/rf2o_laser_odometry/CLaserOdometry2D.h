@@ -27,6 +27,11 @@
 #include <ros/ros.h>
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/LaserScan.h>
+#include <sensor_msgs/Imu.h>
+#include <mutex>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2/LinearMath/Quaternion.h>
 
 // Eigen headers
 #include <Eigen/Dense>
@@ -78,7 +83,8 @@ public:
   virtual ~CLaserOdometry2D() = default;
 
   void init(const sensor_msgs::LaserScan& scan,
-            const geometry_msgs::Pose& initial_robot_pose);
+            const geometry_msgs::Pose& initial_robot_pose,
+            ros::NodeHandle& nh);
 
   bool is_initialized();
 
@@ -139,6 +145,13 @@ protected:
   float g_mask[5];
 
   double lin_speed, ang_speed;
+  double vx, vy, vx_world, vy_world, phi;
+
+  ros::Subscriber imu_subscriber;  // IMU数据订阅器
+  std::mutex imu_mutex;            // 互斥锁，确保线程安全
+  double imu_yaw;                  // 存储IMU的yaw角
+  ros::NodeHandle nh;  // ROS 句柄
+
 
   ros::WallDuration	m_runtime;
   ros::Time last_odom_time, current_scan_time;
@@ -173,6 +186,7 @@ protected:
   bool filterLevelSolution();
   void PoseUpdate();
   void Reset(const Pose3d& ini_pose/*, CObservation2DRangeScan scan*/);
+  void imuCallback(const sensor_msgs::Imu::ConstPtr& msg); // **新增回调函数声明**
 };
 
 } /* namespace rf2o */
